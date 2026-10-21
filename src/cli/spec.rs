@@ -10,6 +10,12 @@ pub(super) fn command() -> Command {
         .about("terminal workspace manager for AI coding agents")
         .disable_help_flag(true)
         .disable_version_flag(true)
+        .arg(
+            Arg::new("directory")
+                .value_name("DIRECTORY")
+                .value_hint(ValueHint::DirPath)
+                .help("Open a project workspace, or add a tab if it is already open"),
+        )
         .arg(help_flag())
         .arg(option("session", "NAME").help("Use or create a named persistent session"))
         .arg(option("machine", "LABEL-OR-ID").help("Run an API command on a saved SSH machine"))

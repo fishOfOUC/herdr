@@ -202,6 +202,10 @@ fn validate_running_server_compatibility(saved_federation: bool) -> io::Result<(
 ///
 /// Returns the PID of the spawned server process.
 pub fn spawn_server_daemon() -> io::Result<u32> {
+    spawn_server_daemon_with_startup_workspace(true)
+}
+
+fn spawn_server_daemon_with_startup_workspace(seed_workspace: bool) -> io::Result<u32> {
     let exe = std::env::current_exe().map_err(|err| {
         io::Error::new(
             err.kind(),
@@ -212,6 +216,11 @@ pub fn spawn_server_daemon() -> io::Result<u32> {
     info!(exe = %exe.display(), "spawning server daemon");
 
     let mut command = build_server_daemon_command(exe);
+    if !seed_workspace {
+        // An explicit directory is opened through the JSON API once the server is ready.
+        // Suppress automatic seeding so a fresh session does not get a duplicate tab.
+        command.env_remove(STARTUP_CWD_ENV_VAR);
+    }
 
     let pid =
         crate::platform::launch_server_daemon_command(&mut command).map_err(|err: io::Error| {
@@ -302,7 +311,7 @@ pub fn wait_for_server_socket(socket_path: &Path, timeout: Duration) -> io::Resu
 /// 1. Check if a server is listening on the client socket
 /// 2. If no server → spawn server daemon → wait for socket readiness
 /// 3. Run the thin client (which connects to the server)
-pub fn auto_detect_launch(saved_federation: bool) -> io::Result<()> {
+pub fn auto_detect_launch(saved_federation: bool, directory: Option<&Path>) -> io::Result<()> {
     // The client requires terminal geometry before it can attach. Reject an
     // unusable terminal before socket lookup creates directories or starts a daemon.
     crate::platform::terminal_grid_size().map_err(|err| {
@@ -317,22 +326,26 @@ pub fn auto_detect_launch(saved_federation: bool) -> io::Result<()> {
     let startup = is_server_listening().and_then(|listening| {
         if listening {
             info!("server already running, attaching as client");
-            if saved_federation {
+            if saved_federation && directory.is_none() {
                 Ok(())
             } else {
                 validate_running_server_compatibility(false)
             }
         } else {
             info!("no server running, spawning server daemon");
-            spawn_server_daemon()
+            spawn_server_daemon_with_startup_workspace(directory.is_none())
                 .and_then(|_| wait_for_server_socket(&socket_path, SERVER_READY_TIMEOUT))
         }
     });
     if let Err(error) = startup {
-        if !saved_federation {
+        if !saved_federation || directory.is_some() {
             return Err(error);
         }
         tracing::warn!(%error, "Local startup failed; keeping saved machines available");
+    }
+
+    if let Some(directory) = directory {
+        crate::cli::launch::open_directory(directory)?;
     }
 
     // Now attach as a thin client.

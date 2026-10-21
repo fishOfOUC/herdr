@@ -603,12 +603,18 @@ fn main() -> io::Result<()> {
         }
     }
 
-    if args.iter().any(|a| a == "--help" || a == "-h") {
+    let has_launch_flag = |flags: &[&str]| {
+        args.iter()
+            .skip(1)
+            .take_while(|arg| arg.as_str() != "--")
+            .any(|arg| flags.contains(&arg.as_str()))
+    };
+    if has_launch_flag(&["--help", "-h"]) {
         platform::begin_cli_output();
         println!("herdr — terminal workspace manager for AI coding agents");
         println!();
-        println!("Usage: herdr [options]");
-        println!("       herdr --session <name> [options]");
+        println!("Usage: herdr [options] [directory]");
+        println!("       herdr --session <name> [options] [directory]");
         println!("       herdr --machine <label-or-id> <command>");
         println!("       herdr --remote <ssh-target> [--session <name>]");
         println!("       herdr session attach <name>");
@@ -634,6 +640,10 @@ fn main() -> io::Result<()> {
         println!("Common commands:");
         for (command, description) in [
             ("herdr", "Launch or attach to the persistent session"),
+            (
+                "herdr <directory>",
+                "Open a project workspace, or add a tab if it is already open",
+            ),
             (
                 "herdr status [server|client]",
                 "Show local client and running server status",
@@ -722,25 +732,33 @@ fn main() -> io::Result<()> {
         return Ok(());
     }
 
-    if args.iter().any(|a| a == "--version" || a == "-V") {
+    if has_launch_flag(&["--version", "-V"]) {
         platform::begin_cli_output();
         println!("herdr {}", crate::build_info::version());
         return Ok(());
     }
 
-    if args.iter().any(|a| a == "--default-config") {
+    if has_launch_flag(&["--default-config"]) {
         platform::begin_cli_output();
         print!("{DEFAULT_CONFIG}");
         return Ok(());
     }
 
-    if args.iter().any(|a| a == "--skill") {
+    if has_launch_flag(&["--skill"]) {
         platform::begin_cli_output();
         print!("{SKILL}");
         return Ok(());
     }
 
-    // Reject unknown flags
+    let launch_directory = match cli::launch::directory_argument(&args[1..]) {
+        Ok(directory) => directory,
+        Err(err) => {
+            eprintln!("error: {err}");
+            std::process::exit(2);
+        }
+    };
+
+    // Reject unknown flags; a validated directory is a launch argument, not a subcommand.
     let known_flags = [
         "--session",
         "--machine",
@@ -753,7 +771,7 @@ fn main() -> io::Result<()> {
         "--help",
         "-h",
     ];
-    for arg in &args[1..] {
+    for arg in args[1..].iter().filter(|_| launch_directory.is_none()) {
         let arg_name = arg.split_once('=').map(|(name, _)| name).unwrap_or(arg);
         if arg.starts_with('-') && !known_flags.contains(&arg_name) {
             eprintln!("unknown option: {arg}");
@@ -799,7 +817,9 @@ fn main() -> io::Result<()> {
 
     let saved_federation =
         client::endpoint::EndpointCatalog::load().is_ok_and(|catalog| catalog.has_enabled_ssh());
-    if let Err(err) = server::autodetect::auto_detect_launch(saved_federation) {
+    if let Err(err) =
+        server::autodetect::auto_detect_launch(saved_federation, launch_directory.as_deref())
+    {
         eprintln!("herdr: {err}");
         std::process::exit(1);
     }

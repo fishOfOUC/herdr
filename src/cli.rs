@@ -23,6 +23,7 @@ pub(crate) mod agent;
 mod api;
 mod completion;
 mod integration;
+pub(crate) mod launch;
 mod machine;
 pub(crate) mod notification;
 pub(crate) mod pane;

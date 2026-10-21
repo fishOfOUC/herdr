@@ -23,6 +23,17 @@ herdr channel set stable      # return a direct install to stable
 herdr --version               # print version
 ```
 
+Pass a project directory to open it before attaching: `herdr .`,
+`herdr ../project`, or `herdr "path with spaces"`. Relative paths are resolved
+from the shell where you run the command. Herdr creates and focuses a workspace
+for a new project. If that project already has a workspace, it creates and focuses
+a tab in that workspace instead, even when another workspace is active. Matching
+uses resolved directory paths, not workspace labels: the Git checkout path or the
+first tab's directory identifies a project. Use `herdr --session work ../project` to select a named
+local session. Plain `herdr` keeps its existing attach and restore behavior.
+The directory must exist; use `herdr -- ./status` for a path that could be confused
+with a command. Directory arguments are not supported with `--remote`.
+
 Optional launch and update settings:
 
 - Add `--session <name>` to use a named session instead of the default.
